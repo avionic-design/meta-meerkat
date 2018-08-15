@@ -14,3 +14,6 @@ MACHINE_FEATURES += "ext2 vfat"
 # The SoC and the PMU have an RTC but the board has to provides backed
 # up power for them to keep the time as is expected from an RTC.
 MACHINE_FEATURES_BACKFILL_CONSIDERED += "rtc"
+
+# Install the meerkat specific configs
+MACHINE_ESSENTIAL_EXTRA_RDEPENDS += "meerkat-configs"

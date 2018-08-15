@@ -1,0 +1,2 @@
+# Setup the temperature sensor to match the thermal config in DT
+ACTION=="add", SUBSYSTEM=="hwmon", ENV{OF_FULLNAME}=="/i2c@7000d000/temperature-sensor@4c", RUN+="/usr/sbin/thermal2hwmon $name com-thermal=temp1 cpu-thermal=temp2"

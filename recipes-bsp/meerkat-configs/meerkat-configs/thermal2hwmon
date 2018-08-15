@@ -1,0 +1,93 @@
+#!/bin/sh
+#
+# This script take its settings from a thermal zone and apply them
+# to a hwmon device. This is to make sure that both have compatible
+# settings and to have the hwmon device serve as a backup in case
+# the thermal zone code didn't manage to shutdown the host in time.
+#
+# The hwmon device is configured with a critical value 2°C higher
+# than the thermal zone and an hysterisis of 10°C.
+#
+
+get_sysfs_device() {
+	local base="$1"
+	local prop="$2"
+	local val="$3"
+
+	for dev in $base/* ; do
+		[ -d "$dev" -a -f "$dev/$prop" ] || continue
+		if [ "$(cat $dev/$prop)" = "$val" ]; then
+			echo "$dev"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+get_sysfs_property() {
+	local base="$1"
+	local mask="$2"
+	local val="$3"
+
+	for prop in $base/$mask ; do
+		[ -f "$prop" ] || continue
+		if [ "$(cat $prop)" = "$val" ]; then
+			echo "$prop"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+get_trip_point_temp() {
+	local zone trip
+	zone="$(get_sysfs_device /sys/class/thermal type $1)" || return
+	trip="$(get_sysfs_property $zone "trip_point_*_type" $2)" || return
+	cat ${trip%_type}_temp
+}
+
+# Using test doesn't work properly as root
+is_writable() {
+	stat -c %A "$1" | grep -q w
+}
+
+apply_tzone_to_hwmon() {
+	local hwmon="$1"
+	local tzone="$2"
+	local field="$3"
+
+	[ -n "$tzone" ] || return
+	[ -d "$hwmon" ] || return
+	[ -n "$field" ] || return
+
+	local max="$(get_trip_point_temp $tzone critical)" || return
+	local crit="$((max + critical_offset))"
+	local crit_hyst="$((max - crit_hyst_offset))"
+
+	for prop in max crit crit_hyst ; do
+		is_writable "$hwmon/${field}_${prop}" || continue
+		eval val=\"\$$prop\"
+		echo "$val" > "$hwmon/${field}_${prop}"
+	done
+}
+
+# Get the zone we want to apply to an hwmon sesnor
+hwmon="/sys/class/hwmon/$1"
+crit_offset="2000"
+crit_hyst_offset="10000"
+
+# Check that the hwmon device exists
+[ -d "/sys/class/hwmon/$1" ] || exit
+
+shift 1
+
+echo "Running" > /tmp/hwmon
+
+for pair in "$@"; do
+	tzone="$(echo $pair | cut -d = -f 1)"
+	field="$(echo $pair | cut -d = -f 2)"
+
+	apply_tzone_to_hwmon "$hwmon" "$tzone" "$field" || exit
+done
