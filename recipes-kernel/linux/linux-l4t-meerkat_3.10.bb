@@ -53,3 +53,5 @@ do_install[postfuncs] += "generate_extlinux_conf"
 FILES_${KERNEL_PACKAGE_NAME}-image += "/${KERNEL_IMAGEDEST}/extlinux"
 
 COMPATIBLE_MACHINE = "(meerkat$)"
+
+RRECOMMENDS_kernel += "linux-backports"

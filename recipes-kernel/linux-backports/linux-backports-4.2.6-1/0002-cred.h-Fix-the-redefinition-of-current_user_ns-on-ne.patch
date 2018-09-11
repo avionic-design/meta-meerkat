@@ -1,0 +1,33 @@
+From 71c75735b21cb90a771a97134ef2185a6e88a8d5 Mon Sep 17 00:00:00 2001
+From: Alban Bedel <alban.bedel@avionic-design.de>
+Date: Mon, 10 Sep 2018 13:50:36 +0200
+Subject: [PATCH 2/4] cred.h: Fix the redefinition of current_user_ns on newer
+ kernels
+
+Since 4.2 current_user_ns might be an inline function and not a macro,
+so the simple #ifndef test doesn't work properly with these kernels.
+This API has been available since 2.6.29 so check for this version,
+but leave the #ifndef to still work properly with older kernels that
+have backported this API.
+
+Signed-off-by: Alban Bedel <alban.bedel@avionic-design.de>
+---
+ backport-include/linux/cred.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/backport-include/linux/cred.h b/backport-include/linux/cred.h
+index 2fbcf01..d554d9e 100644
+--- a/backport-include/linux/cred.h
++++ b/backport-include/linux/cred.h
+@@ -3,7 +3,7 @@
+ #include_next <linux/cred.h>
+ #include <linux/version.h>
+ 
+-#ifndef current_user_ns
++#if !defined(current_user_ns) && LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29)
+ #define current_user_ns()	(current->nsproxy->user_ns)
+ #endif
+ 
+-- 
+2.17.1
+

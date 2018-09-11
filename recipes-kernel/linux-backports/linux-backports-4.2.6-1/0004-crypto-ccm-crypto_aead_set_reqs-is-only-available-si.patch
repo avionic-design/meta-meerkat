@@ -1,0 +1,36 @@
+From 34d5a53744bf5904ba4de87c0734e2bc2e4a6f4a Mon Sep 17 00:00:00 2001
+From: Alban Bedel <alban.bedel@avionic-design.de>
+Date: Mon, 10 Sep 2018 13:25:49 +0200
+Subject: [PATCH 4/4] crypto-ccm: crypto_aead_set_reqs() is only available
+ since 4.2
+
+Add an inline implementation of crypto_aead_set_reqs() for kernels
+older than 4.2.
+
+Signed-off-by: Alban Bedel <alban.bedel@avionic-design.de>
+---
+ compat/crypto-ccm.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/compat/crypto-ccm.c b/compat/crypto-ccm.c
+index 7a77310..b2b66d5 100644
+--- a/compat/crypto-ccm.c
++++ b/compat/crypto-ccm.c
+@@ -53,6 +53,14 @@ static int crypto_memneq(const void *a, const void *b, size_t size)
+ }
+ #endif
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(4,2,0)
++static inline void crypto_aead_set_reqsize(struct crypto_aead *aead,
++					   unsigned int reqsize)
++{
++	crypto_aead_crt(aead)->reqsize = reqsize;
++}
++#endif
++
+ /* from internal.h */
+ struct crypto_alg *crypto_alg_mod_lookup(const char *name, u32 type, u32 mask);
+ 
+-- 
+2.17.1
+
