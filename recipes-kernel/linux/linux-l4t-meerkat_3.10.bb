@@ -10,11 +10,11 @@ PV .= "+git${SRCPV}"
 FILESEXTRAPATHS_prepend := "${THISDIR}/${BPN}-${@bb.parse.BBHandler.vars_from_file(d.getVar('FILE', False),d)[1]}:"
 EXTRA_OEMAKE += 'LIBGCC=""'
 
-L4T_VERSION = "r21.6"
+L4T_VERSION = "r21.7"
 LOCALVERSION = "-meerkat-${L4T_VERSION}"
 
-SRCBRANCH = "meerkat/l4t-r21-6"
-SRCREV = "d343a56fcf511d219a7171299c1ec47870fcd179"
+SRCBRANCH = "meerkat/l4t-r21-7"
+SRCREV = "b8a27bf33076b29936c10004603715b6c8430b48"
 KERNEL_REPO = "github.com/avionic-design/linux-l4t"
 SRC_URI = " \
     git://${KERNEL_REPO};branch=${SRCBRANCH} \
