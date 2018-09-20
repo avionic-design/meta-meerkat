@@ -7,6 +7,10 @@ MACHINEOVERRIDES =. "meerkat:"
 # Override the kernel
 PREFERRED_PROVIDER_virtual/kernel ?= "linux-l4t-meerkat"
 
+# Parameters to build a valid uImage or fitImage
+UBOOT_LOADADDRESS = "0x82000000"
+ENTRYPOINT = "0x82000000"
+
 require conf/machine/include/tegra124.inc
 
 # The COM has an integrated eMMC
