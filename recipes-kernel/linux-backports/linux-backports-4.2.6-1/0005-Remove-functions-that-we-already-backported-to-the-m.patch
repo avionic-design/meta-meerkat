@@ -1,0 +1,229 @@
+From cfde306212bb27063d13e811ca4cb24693b8d555 Mon Sep 17 00:00:00 2001
+From: Alban Bedel <alban.bedel@avionic-design.de>
+Date: Tue, 25 Sep 2018 16:12:20 +0200
+Subject: [PATCH] Remove functions that we already backported to the meerkat
+ kernel
+
+As we already backported many things to the meerkat kernel some of
+API from the backport modules need to be removed.
+
+Signed-off-by: Alban Bedel <alban.bedel@avionic-design.de>
+---
+ compat/backport-3.13.c | 125 -----------------------------------------
+ compat/backport-3.15.c |  60 --------------------
+ 2 files changed, 185 deletions(-)
+
+diff --git a/compat/backport-3.13.c b/compat/backport-3.13.c
+index 6ce72b2..7b444f7 100644
+--- a/compat/backport-3.13.c
++++ b/compat/backport-3.13.c
+@@ -17,81 +17,6 @@
+ #include <linux/device.h>
+ #include <linux/hwmon.h>
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0))
+-#ifdef CONFIG_REGULATOR
+-#include <linux/module.h>
+-#include <linux/regulator/driver.h>
+-#include <linux/device.h>
+-#include <linux/static_key.h>
+-
+-static void devm_rdev_release(struct device *dev, void *res)
+-{
+-	regulator_unregister(*(struct regulator_dev **)res);
+-}
+-
+-/**
+- * devm_regulator_register - Resource managed regulator_register()
+- * @regulator_desc: regulator to register
+- * @config: runtime configuration for regulator
+- *
+- * Called by regulator drivers to register a regulator.  Returns a
+- * valid pointer to struct regulator_dev on success or an ERR_PTR() on
+- * error.  The regulator will automatically be released when the device
+- * is unbound.
+- */
+-struct regulator_dev *devm_regulator_register(struct device *dev,
+-				  const struct regulator_desc *regulator_desc,
+-				  const struct regulator_config *config)
+-{
+-	struct regulator_dev **ptr, *rdev;
+-
+-	ptr = devres_alloc(devm_rdev_release, sizeof(*ptr),
+-			   GFP_KERNEL);
+-	if (!ptr)
+-		return ERR_PTR(-ENOMEM);
+-
+-	rdev = regulator_register(regulator_desc, config);
+-	if (!IS_ERR(rdev)) {
+-		*ptr = rdev;
+-		devres_add(dev, ptr);
+-	} else {
+-		devres_free(ptr);
+-	}
+-
+-	return rdev;
+-}
+-EXPORT_SYMBOL_GPL(devm_regulator_register);
+-
+-static int devm_rdev_match(struct device *dev, void *res, void *data)
+-{
+-	struct regulator_dev **r = res;
+-	if (!r || !*r) {
+-		WARN_ON(!r || !*r);
+-		return 0;
+-	}
+-	return *r == data;
+-}
+-
+-/**
+- * devm_regulator_unregister - Resource managed regulator_unregister()
+- * @regulator: regulator to free
+- *
+- * Unregister a regulator registered with devm_regulator_register().
+- * Normally this function will not need to be called and the resource
+- * management code will ensure that the resource is freed.
+- */
+-void devm_regulator_unregister(struct device *dev, struct regulator_dev *rdev)
+-{
+-	int rc;
+-
+-	rc = devres_release(dev, devm_rdev_release, devm_rdev_match, rdev);
+-	if (rc != 0)
+-		WARN_ON(rc);
+-}
+-EXPORT_SYMBOL_GPL(devm_regulator_unregister);
+-#endif /* CONFIG_REGULATOR */
+-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)) */
+-
+ /************* generic netlink backport *****************/
+ #if RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,0)
+ 
+@@ -257,53 +182,3 @@ bool pci_device_is_present(struct pci_dev *pdev)
+ }
+ EXPORT_SYMBOL_GPL(pci_device_is_present);
+ #endif /* CONFIG_PCI */
+-
+-#ifdef CONFIG_HWMON
+-struct device*
+-hwmon_device_register_with_groups(struct device *dev, const char *name,
+-				  void *drvdata,
+-				  const struct attribute_group **groups)
+-{
+-	struct device *hwdev;
+-
+-	hwdev = hwmon_device_register(dev);
+-	hwdev->groups = groups;
+-	dev_set_drvdata(hwdev, drvdata);
+-	return hwdev;
+-}
+-
+-static void devm_hwmon_release(struct device *dev, void *res)
+-{
+-	struct device *hwdev = *(struct device **)res;
+-
+-	hwmon_device_unregister(hwdev);
+-}
+-
+-struct device *
+-devm_hwmon_device_register_with_groups(struct device *dev, const char *name,
+-				       void *drvdata,
+-				       const struct attribute_group **groups)
+-{
+-	struct device **ptr, *hwdev;
+-
+-	if (!dev)
+-		return ERR_PTR(-EINVAL);
+-
+-	ptr = devres_alloc(devm_hwmon_release, sizeof(*ptr), GFP_KERNEL);
+-	if (!ptr)
+-		return ERR_PTR(-ENOMEM);
+-
+-	hwdev = hwmon_device_register_with_groups(dev, name, drvdata, groups);
+-	if (IS_ERR(hwdev))
+-		goto error;
+-
+-	*ptr = hwdev;
+-	devres_add(dev, ptr);
+-	return hwdev;
+-
+-error:
+-	devres_free(ptr);
+-	return hwdev;
+-}
+-EXPORT_SYMBOL_GPL(devm_hwmon_device_register_with_groups);
+-#endif
+diff --git a/compat/backport-3.15.c b/compat/backport-3.15.c
+index 381fe65..ad12a1d 100644
+--- a/compat/backport-3.15.c
++++ b/compat/backport-3.15.c
+@@ -32,66 +32,6 @@ EXPORT_SYMBOL_GPL(net_ieee802154_lowpan);
+ #endif
+ #endif /* CPTCFG_IEEE802154_6LOWPAN */
+ 
+-/**
+- * devm_kstrdup - Allocate resource managed space and
+- *                copy an existing string into that.
+- * @dev: Device to allocate memory for
+- * @s: the string to duplicate
+- * @gfp: the GFP mask used in the devm_kmalloc() call when
+- *       allocating memory
+- * RETURNS:
+- * Pointer to allocated string on success, NULL on failure.
+- */
+-char *devm_kstrdup(struct device *dev, const char *s, gfp_t gfp)
+-{
+-	size_t size;
+-	char *buf;
+-
+-	if (!s)
+-		return NULL;
+-
+-	size = strlen(s) + 1;
+-	buf = devm_kmalloc(dev, size, gfp);
+-	if (buf)
+-		memcpy(buf, s, size);
+-	return buf;
+-}
+-EXPORT_SYMBOL_GPL(devm_kstrdup);
+-
+-#ifdef CONFIG_OF
+-/**
+- * of_property_count_elems_of_size - Count the number of elements in a property
+- *
+- * @np:		device node from which the property value is to be read.
+- * @propname:	name of the property to be searched.
+- * @elem_size:	size of the individual element
+- *
+- * Search for a property in a device node and count the number of elements of
+- * size elem_size in it. Returns number of elements on sucess, -EINVAL if the
+- * property does not exist or its length does not match a multiple of elem_size
+- * and -ENODATA if the property does not have a value.
+- */
+-int of_property_count_elems_of_size(const struct device_node *np,
+-				const char *propname, int elem_size)
+-{
+-	struct property *prop = of_find_property(np, propname, NULL);
+-
+-	if (!prop)
+-		return -EINVAL;
+-	if (!prop->value)
+-		return -ENODATA;
+-
+-	if (prop->length % elem_size != 0) {
+-		pr_err("size of %s in node %s is not a multiple of %d\n",
+-		       propname, np->full_name, elem_size);
+-		return -EINVAL;
+-	}
+-
+-	return prop->length / elem_size;
+-}
+-EXPORT_SYMBOL_GPL(of_property_count_elems_of_size);
+-#endif
+-
+ void kvfree(const void *addr)
+ {
+ 	if (is_vmalloc_addr(addr))
+-- 
+2.17.1
+
