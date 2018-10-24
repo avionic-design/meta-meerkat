@@ -1,0 +1,205 @@
+From 2956fcf56edc8c8f8c4703306f38316494d13da2 Mon Sep 17 00:00:00 2001
+From: Anilkumar Kolli <akolli@qti.qualcomm.com>
+Date: Fri, 16 Oct 2015 15:54:51 +0300
+Subject: [PATCH] ath10k: disable PCI PS for QCA988X and QCA99X0
+
+This patch disables PCI PS for QCA988X and QCA99X0, Since PCI PS is
+validated for QCA6174, let it be enabled only for QCA6174. It would be
+better to execute PCI PS related functions only for the supported devices.
+
+PCI time out issue is observed with QCA99X0 on x86 platform, We will
+disable PCI PS for QCA988X and QCA99X0 until PCI PS is properly implemented.
+
+Taking and releasing ps_lock is causing higher CPU consumption. Michal Kazior
+suggested ps_lock overhead to be reworked so that ath10k_pci_wake/sleep
+functions are called less often, i.e. move the powersave logic up (only during
+irq handling, tx path, submitting fw commands) but that's a bigger change and
+can be implemented later.
+
+Signed-off-by: Anilkumar Kolli <akolli@qti.qualcomm.com>
+Signed-off-by: Kalle Valo <kvalo@qca.qualcomm.com>
+
+---
+ drivers/net/wireless/ath/ath10k/pci.c | 82 ++++++++++++++++++++++++++-
+ drivers/net/wireless/ath/ath10k/pci.h |  6 ++
+ 2 files changed, 87 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/ath/ath10k/pci.c b/drivers/net/wireless/ath/ath10k/pci.c
+index 8c5cc1f..55ef709 100644
+--- a/drivers/net/wireless/ath/ath10k/pci.c
++++ b/drivers/net/wireless/ath/ath10k/pci.c
+@@ -387,12 +387,53 @@ static int ath10k_pci_wake_wait(struct ath10k *ar)
+ 	return -ETIMEDOUT;
+ }
+ 
++static int ath10k_pci_force_wake(struct ath10k *ar)
++{
++	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
++	unsigned long flags;
++	int ret = 0;
++
++	spin_lock_irqsave(&ar_pci->ps_lock, flags);
++
++	if (!ar_pci->ps_awake) {
++		iowrite32(PCIE_SOC_WAKE_V_MASK,
++			  ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS +
++			  PCIE_SOC_WAKE_ADDRESS);
++
++		ret = ath10k_pci_wake_wait(ar);
++		if (ret == 0)
++			ar_pci->ps_awake = true;
++	}
++
++	spin_unlock_irqrestore(&ar_pci->ps_lock, flags);
++
++	return ret;
++}
++
++static void ath10k_pci_force_sleep(struct ath10k *ar)
++{
++	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
++	unsigned long flags;
++
++	spin_lock_irqsave(&ar_pci->ps_lock, flags);
++
++	iowrite32(PCIE_SOC_WAKE_RESET,
++		  ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS +
++		  PCIE_SOC_WAKE_ADDRESS);
++	ar_pci->ps_awake = false;
++
++	spin_unlock_irqrestore(&ar_pci->ps_lock, flags);
++}
++
+ static int ath10k_pci_wake(struct ath10k *ar)
+ {
+ 	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
+ 	unsigned long flags;
+ 	int ret = 0;
+ 
++	if (ar_pci->pci_ps == 0)
++		return ret;
++
+ 	spin_lock_irqsave(&ar_pci->ps_lock, flags);
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_PCI_PS, "pci ps wake refcount %lu awake %d\n",
+@@ -424,6 +465,9 @@ static void ath10k_pci_sleep(struct ath10k *ar)
+ 	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
+ 	unsigned long flags;
+ 
++	if (ar_pci->pci_ps == 0)
++		return;
++
+ 	spin_lock_irqsave(&ar_pci->ps_lock, flags);
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_PCI_PS, "pci ps sleep refcount %lu awake %d\n",
+@@ -466,6 +510,11 @@ static void ath10k_pci_sleep_sync(struct ath10k *ar)
+ 	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
+ 	unsigned long flags;
+ 
++	if (ar_pci->pci_ps == 0) {
++		ath10k_pci_force_sleep(ar);
++		return;
++	}
++
+ 	del_timer_sync(&ar_pci->ps_timer);
+ 
+ 	spin_lock_irqsave(&ar_pci->ps_lock, flags);
+@@ -2225,6 +2274,15 @@ static int ath10k_pci_hif_resume(struct ath10k *ar)
+ 	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
+ 	struct pci_dev *pdev = ar_pci->pdev;
+ 	u32 val;
++	int ret = 0;
++
++	if (ar_pci->pci_ps == 0) {
++		ret = ath10k_pci_force_wake(ar);
++		if (ret) {
++			ath10k_err(ar, "failed to wake up target: %d\n", ret);
++			return ret;
++		}
++	}
+ 
+ 	/* Suspend/Resume resets the PCI configuration space, so we have to
+ 	 * re-disable the RETRY_TIMEOUT register (0x41) to keep PCI Tx retries
+@@ -2235,7 +2293,7 @@ static int ath10k_pci_hif_resume(struct ath10k *ar)
+ 	if ((val & 0x0000ff00) != 0)
+ 		pci_write_config_dword(pdev, 0x40, val & 0xffff00ff);
+ 
+-	return 0;
++	return ret;
+ }
+ #endif
+ 
+@@ -2329,6 +2387,16 @@ static irqreturn_t ath10k_pci_interrupt_handler(int irq, void *arg)
+ {
+ 	struct ath10k *ar = arg;
+ 	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
++	int ret;
++
++	if (ar_pci->pci_ps == 0) {
++		ret = ath10k_pci_force_wake(ar);
++		if (ret) {
++			ath10k_warn(ar, "failed to wake device up on irq: %d\n",
++				    ret);
++			return IRQ_NONE;
++		}
++	}
+ 
+ 	if (ar_pci->num_msi_intrs == 0) {
+ 		if (!ath10k_pci_irq_pending(ar))
+@@ -2741,13 +2809,16 @@ static int ath10k_pci_probe(struct pci_dev *pdev,
+ 	struct ath10k_pci *ar_pci;
+ 	enum ath10k_hw_rev hw_rev;
+ 	u32 chip_id;
++	bool pci_ps;
+ 
+ 	switch (pci_dev->device) {
+ 	case QCA988X_2_0_DEVICE_ID:
+ 		hw_rev = ATH10K_HW_QCA988X;
++		pci_ps = false;
+ 		break;
+ 	case QCA6174_2_1_DEVICE_ID:
+ 		hw_rev = ATH10K_HW_QCA6174;
++		pci_ps = true;
+ 		break;
+ 	default:
+ 		WARN_ON(1);
+@@ -2767,6 +2838,7 @@ static int ath10k_pci_probe(struct pci_dev *pdev,
+ 	ar_pci->pdev = pdev;
+ 	ar_pci->dev = &pdev->dev;
+ 	ar_pci->ar = ar;
++	ar_pci->pci_ps = pci_ps;
+ 
+ 	if (pdev->subsystem_vendor || pdev->subsystem_device)
+ 		scnprintf(ar->spec_board_id, sizeof(ar->spec_board_id),
+@@ -2798,6 +2870,14 @@ static int ath10k_pci_probe(struct pci_dev *pdev,
+ 	ath10k_pci_ce_deinit(ar);
+ 	ath10k_pci_irq_disable(ar);
+ 
++	if (ar_pci->pci_ps == 0) {
++		ret = ath10k_pci_force_wake(ar);
++		if (ret) {
++			ath10k_warn(ar, "failed to wake up device : %d\n", ret);
++			goto err_free_pipes;
++		}
++	}
++
+ 	ret = ath10k_pci_init_irq(ar);
+ 	if (ret) {
+ 		ath10k_err(ar, "failed to init irqs: %d\n", ret);
+diff --git a/drivers/net/wireless/ath/ath10k/pci.h b/drivers/net/wireless/ath/ath10k/pci.h
+index d7696dd..eb5c950 100644
+--- a/drivers/net/wireless/ath/ath10k/pci.h
++++ b/drivers/net/wireless/ath/ath10k/pci.h
+@@ -220,6 +220,12 @@ struct ath10k_pci {
+ 	 * powersave register state changes.
+ 	 */
+ 	bool ps_awake;
++
++	/* pci power save, disable for QCA988X and QCA99X0.
++	 * Writing 'false' to this variable avoids frequent locking
++	 * on MMIO read/write.
++	 */
++	bool pci_ps;
+ };
+ 
+ static inline struct ath10k_pci *ath10k_pci_priv(struct ath10k *ar)

@@ -6,6 +6,7 @@ SRC_URI += " \
     file://0003-crypto-ccm-crypto_memneq-has-been-backported-to-3.12.patch \
     file://0004-crypto-ccm-crypto_aead_set_reqs-is-only-available-si.patch \
     file://0005-Remove-functions-that-we-already-backported-to-the-m.patch \
+    file://0006-ath10k-disable-PCI-PS-for-QCA988X-and-QCA99X0.patch \
 "
 
 SRC_URI[md5sum] = "72aca26f15d93bdda02a7c84cb9bb0be"
