@@ -21,3 +21,7 @@ MACHINE_FEATURES_BACKFILL_CONSIDERED += "rtc"
 
 # Install the meerkat specific configs
 MACHINE_ESSENTIAL_EXTRA_RDEPENDS += "meerkat-configs"
+
+# Add a package arch for all Meerkat based machines
+COM_PKGARCH = "${SOC_FAMILY_PKGARCH}_meerkat"
+PACKAGE_EXTRA_ARCHS_append = " ${COM_PKGARCH}"
