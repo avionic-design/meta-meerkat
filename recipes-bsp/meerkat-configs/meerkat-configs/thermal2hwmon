@@ -83,8 +83,6 @@ crit_hyst_offset="10000"
 
 shift 1
 
-echo "Running" > /tmp/hwmon
-
 for pair in "$@"; do
 	tzone="$(echo $pair | cut -d = -f 1)"
 	field="$(echo $pair | cut -d = -f 2)"
