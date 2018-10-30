@@ -73,7 +73,7 @@ apply_tzone_to_hwmon() {
 	done
 }
 
-# Get the zone we want to apply to an hwmon sesnor
+# Get the zone we want to apply to an hwmon sensor
 hwmon="/sys/class/hwmon/$1"
 crit_offset="2000"
 crit_hyst_offset="10000"
